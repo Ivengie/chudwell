@@ -56,7 +56,6 @@ Demo logins (open the profile icon in the header):
 | Username | Email | Password | Role |
 |---|---|---|---|
 | `reader` | reader@chudwell.com | `reader123` | Reader |
-| `writer` | writer@chudwell.com | `writer123` | Writer |
 | `author` | author@chudwell.com | `author123` | Writer |
 
 You can also choose **Continue as Guest**.
