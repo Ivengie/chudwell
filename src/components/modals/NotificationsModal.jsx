@@ -10,7 +10,7 @@ export default function NotificationsModal() {
         <h3 style={s("margin-top: 0; font-family: 'Playfair Display'")}>Notifications</h3>
         <div style={s("display: flex; flex-direction: column; gap: 12px")}>
           <div className="notification-item">
-            <strong>Chapter Update:</strong> "A House Made of Weather" posted Chapter 14!
+            <strong>Chapter Update:</strong> "A House Made of Weather" posted Chapter 3!
           </div>
         </div>
       </div>
