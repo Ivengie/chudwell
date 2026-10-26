@@ -15,10 +15,10 @@ export default function ProfileModal() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return setError("Please enter both your username and password.");
-    const err = login(username, password);
+    const err = await login(username, password);
     if (err) return setError(err);
     closeModal();
   }

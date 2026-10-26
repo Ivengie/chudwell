@@ -19,17 +19,38 @@ export function AuthProvider({ children }) {
 
   const role = user.isLoggedIn ? user.role : "guest";
 
-  const login = useCallback((identifier, password) => {
-    const id = normalize(identifier);
+  const login = useCallback(async (identifier, password) => {
+  try {
+    const res = await fetch("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return data.error;                 // e.g. "Invalid username or password."
     const account = ROLE_ACCOUNTS.find(
-      (a) => (normalize(a.username) === id || normalize(a.email) === id) && a.password === password.trim()
+      (knownAccount) =>
+        normalize(knownAccount.username) === normalize(data.user.username) ||
+        normalize(knownAccount.email) === normalize(data.user.email),
     );
-    if (!account) return "Invalid username or password. Please try again.";
-    setUser((u) => ({ ...u, isLoggedIn: true, role: account.role, username: "@" + account.username, displayName: account.displayName }));
+    localStorage.setItem("token", data.token);
+    setUser((u) => ({
+      ...u,
+      isLoggedIn: true,
+      role: account?.role ?? "reader",
+      username: "@" + data.user.username,
+      displayName: account?.displayName ?? data.user.name,
+    }));
     return null;
-  }, []);
+  } catch {
+    return "Cannot reach the server. Is the backend running?";
+  }
+}, []);
 
-  const logout = useCallback(() => setUser((u) => ({ ...u, ...GUEST, userAvatar: u.userAvatar })), []);
+  const logout = useCallback(() => {
+    localStorage.removeItem("token");
+    setUser((u) => ({ ...u, ...GUEST, userAvatar: u.userAvatar }));
+  }, []);  
   const setDisplayName = useCallback((displayName) => setUser((u) => ({ ...u, displayName })), []);
   const setAvatar = useCallback((userAvatar) => setUser((u) => ({ ...u, userAvatar })), []);
   const can = useCallback((permission) => Boolean(PERMISSIONS[role]?.[permission]), [role]);
