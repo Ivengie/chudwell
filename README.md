@@ -3,7 +3,7 @@
 > of the chuds, by the chuds, for the *chuds.*
 > A quiet corner of the internet: a home for every kind of story, made for wandering, lingering, and finding your people.
 
-Chudwell is a front-end-only web fiction library and writing platform built with **React, React Router (`HashRouter`) and Vite**. Readers can browse, search, read chapter by chapter with optional background music, like and comment, and organise reading lists. Writers get a built-in studio for drafting and publishing their own books.
+Chudwell is a front-end along with a back-end that only works locally for now web fiction library and writing platform built with **React, React Router (`HashRouter`) and Vite**. Readers can browse, search, read chapter by chapter with optional background music, like and comment, and organise reading lists. Writers get a built-in studio for drafting and publishing their own books.
 
 There is **no backend**. Data is seeded from `src/data/seed.js` and persisted in the browser's `localStorage`.
 
