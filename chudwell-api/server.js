@@ -3,12 +3,33 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import db from "./db.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) throw new Error("Set JWT_SECRET in .env");
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Keep uploads in RAM (never write to Render's ephemeral disk)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed."));
+    }
+    cb(null, true);
+  },
+});
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
 app.use(express.json());
@@ -32,9 +53,12 @@ const publicBook = (book) => ({
   author_id: Number(book.author_id),
   likes: Number(book.likes),
   words: Number(book.words),
+  cover_url: book.cover_url || null,
 });
-const USER_SQL = "SELECT Id AS id, Username AS username, Email AS email, Password AS password, Name AS name, Role AS role FROM users";
-const BOOK_SQL = "SELECT Id AS id, Author_id AS author_id, Title AS title, Synopsis AS synopsis, Status AS status, Likes AS likes, Words AS words, Tags AS tags FROM books";
+const USER_SQL =
+  "SELECT Id AS id, Username AS username, Email AS email, Password AS password, Name AS name, Role AS role FROM users";
+const BOOK_SQL =
+  "SELECT Id AS id, Author_id AS author_id, Title AS title, Synopsis AS synopsis, Status AS status, Likes AS likes, Words AS words, Tags AS tags, Cover_url AS cover_url FROM books";
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -149,12 +173,48 @@ app.get("/api/me", requireAuth, asyncRoute(async (req, res) => {
   res.json(publicUser(user));
 }));
 
+// ---------- file upload ----------
+app.post(
+  "/api/upload/cover",
+  requireAuth,
+  requireRole("writer"),
+  upload.single("cover"),
+  asyncRoute(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided." });
+    }
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
+      return res.status(500).json({ error: "Cloudinary is not configured on the server." });
+    }
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "chudwell/covers",
+          resource_type: "image",
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        },
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.status(201).json({ url: uploadResult.secure_url });
+  }),
+);
+
 // ---------- books ----------
 app.get("/api/books", asyncRoute(async (req, res) => {
   const query = typeof req.query.q === "string" ? req.query.q.toLowerCase() : "";
   const { rows } = await db.execute({
     sql: BOOK_SQL + " WHERE lower(Title) LIKE ? ORDER BY Likes DESC",
-    args: [`%${query}%`],
+    args: [`%\${query}%`],
   });
   res.json(rows.map(publicBook));
 }));
@@ -169,13 +229,13 @@ app.get("/api/books/:id", asyncRoute(async (req, res) => {
 }));
 
 app.post("/api/books", requireAuth, requireRole("writer"), asyncRoute(async (req, res) => {
-  const { title, synopsis = "", status = "ongoing", tags = "" } = req.body ?? {};
+  const { title, synopsis = "", status = "ongoing", tags = "", cover_url = null } = req.body ?? {};
   if (typeof title !== "string" || !title.trim()) {
     return res.status(400).json({ error: "Title is required." });
   }
   const result = await db.execute({
-    sql: "INSERT INTO books (Author_id, Title, Synopsis, Status, Tags) VALUES (?, ?, ?, ?, ?)",
-    args: [req.user.id, title.trim(), synopsis, status, tags],
+    sql: "INSERT INTO books (Author_id, Title, Synopsis, Status, Tags, Cover_url) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [req.user.id, title.trim(), synopsis, status, tags, cover_url],
   });
   const { rows } = await db.execute({
     sql: BOOK_SQL + " WHERE Id = ?",
@@ -194,10 +254,16 @@ app.put("/api/books/:id", requireAuth, requireRole("writer"), asyncRoute(async (
   if (Number(book.Author_id) !== Number(req.user.id)) {
     return res.status(403).json({ error: "You can only edit your own books." });
   }
-  const { title, synopsis, status, tags } = req.body ?? {};
+  const { title, synopsis, status, tags, cover_url } = req.body ?? {};
   await db.execute({
-    sql: "UPDATE books SET Title = COALESCE(?, Title), Synopsis = COALESCE(?, Synopsis), Status = COALESCE(?, Status), Tags = COALESCE(?, Tags) WHERE Id = ?",
-    args: [title ?? null, synopsis ?? null, status ?? null, tags ?? null, req.params.id],
+    sql: `UPDATE books
+          SET Title = COALESCE(?, Title),
+              Synopsis = COALESCE(?, Synopsis),
+              Status = COALESCE(?, Status),
+              Tags = COALESCE(?, Tags),
+              Cover_url = COALESCE(?, Cover_url)
+          WHERE Id = ?`,
+    args: [title ?? null, synopsis ?? null, status ?? null, tags ?? null, cover_url ?? null, req.params.id],
   });
   const { rows } = await db.execute({
     sql: BOOK_SQL + " WHERE Id = ?",

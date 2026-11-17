@@ -71,18 +71,18 @@ async function initializeDatabase() {
     ], "write");
   }
 
-  if (!appliedVersions.has(2)) {
-    const { rows: columns } = await db.execute("PRAGMA table_info(users)");
-    if (!columns.some((column) => column.name === "Role")) {
+  if (!appliedVersions.has(3)) {
+    const { rows: bookColumns } = await db.execute("PRAGMA table_info(books)");
+    if (!bookColumns.some((column) => column.name === "Cover_url")) {
       try {
-        await db.execute("ALTER TABLE users ADD COLUMN Role TEXT NOT NULL DEFAULT 'reader'");
+        await db.execute("ALTER TABLE books ADD COLUMN Cover_url TEXT");
       } catch (error) {
-        if (!(error instanceof Error) || !/duplicate column name: Role/i.test(error.message)) {
+        if (!(error instanceof Error) || !/duplicate column name: Cover_url/i.test(error.message)) {
           throw error;
         }
       }
     }
-    await db.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)");
+    await db.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)");
   }
 }
 

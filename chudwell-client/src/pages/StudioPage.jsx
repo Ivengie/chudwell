@@ -10,7 +10,7 @@ const EMPTY_CHAPTER = { title: "", musicUrl: "", text: "" };
 export default function StudioPage() {
   const { type, bookId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { getStudioBook, readerData, updateDetails, saveChapter, deleteChapter, publish } = useLibrary();
   const { openModal } = useModal();
 
@@ -19,6 +19,7 @@ export default function StudioPage() {
 
   const [details, setDetails] = useState({ title: "", synopsis: "", tags: "", status: "ongoing" });
   const [coverFile, setCoverFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [chapterForm, setChapterForm] = useState(EMPTY_CHAPTER);
   const [editingIndex, setEditingIndex] = useState(null);
 
@@ -42,21 +43,57 @@ export default function StudioPage() {
   const setD = (k) => (e) => setDetails((d) => ({ ...d, [k]: e.target.value }));
   const setC = (k) => (e) => setChapterForm((c) => ({ ...c, [k]: e.target.value }));
 
-  function finishDetails(cover) {
-    updateDetails(bookId, { ...details, tags: normalizeTags(details.tags), cover });
+  async function uploadCoverToCloud(file) {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    const authToken = token || localStorage.getItem("token") || localStorage.getItem("chudwell_token");
+
+    const formData = new FormData();
+    formData.append("cover", file);
+
+    const response = await fetch(`${apiUrl}/api/upload/cover`, {
+      method: "POST",
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to upload cover image.");
+    }
+    return data.url;
+  }
+
+  function finishDetails(coverUrl) {
+    updateDetails(bookId, {
+      ...details,
+      tags: normalizeTags(details.tags),
+      cover: coverUrl,
+      cover_url: coverUrl,
+    });
+    setCoverFile(null);
     alert("Book details updated successfully!");
   }
 
-  function saveDetails(e) {
+  async function saveDetails(e) {
     e.preventDefault();
+    if (isUploading) return;
+
     if (coverFile) {
-      const reader = new FileReader();
-      reader.onload = (evt) => finishDetails(evt.target.result);
-      reader.readAsDataURL(coverFile);
+      try {
+        setIsUploading(true);
+        const cloudinaryUrl = await uploadCoverToCloud(coverFile);
+        finishDetails(cloudinaryUrl);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setIsUploading(false);
+      }
       return;
     }
-    if (!book.cover) return alert("A cover image is required!");
-    finishDetails(book.cover);
+
+    const existingCover = book.cover_url || book.cover;
+    if (!existingCover) return alert("A cover image is required!");
+    finishDetails(existingCover);
   }
 
   function publishBook() {
@@ -135,8 +172,10 @@ export default function StudioPage() {
               <input type="file" accept="image/*" className="input-styled" style={s("padding: 6px")} onChange={(e) => setCoverFile(e.target.files[0] || null)} />
             </div>
             <div style={s("display: flex; gap: 12px")}>
-              <button type="submit" className="btn-primary" style={s("width: auto; padding: 10px 20px")}>Save Book Details</button>
-              <button type="button" className="btn-primary" style={s("width: auto; padding: 10px 20px; background: #2b7a4b")} onClick={publishBook}>Publish Book</button>
+              <button type="submit" disabled={isUploading} className="btn-primary" style={s("width: auto; padding: 10px 20px")}>
+                {isUploading ? "Uploading Cover..." : "Save Book Details"}
+              </button>
+              <button type="button" disabled={isUploading} className="btn-primary" style={s("width: auto; padding: 10px 20px; background: #2b7a4b")} onClick={publishBook}>Publish Book</button>
             </div>
           </form>
         </div>
