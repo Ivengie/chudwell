@@ -3,9 +3,9 @@
 > of the chuds, by the chuds, for the *chuds.*
 > A quiet corner of the internet: a home for every kind of story, made for wandering, lingering, and finding your people.
 
-Chudwell is a front-end-only web fiction library and writing platform built with **React, React Router (`HashRouter`) and Vite**. Readers can browse, search, read chapter by chapter with optional background music, like and comment, and organise reading lists. Writers get a built-in studio for drafting and publishing their own books.
+Chudwell is a web fiction library and writing platform built with **React, React Router (`HashRouter`), Vite, and an Express API**. Readers can browse, search, read chapter by chapter with optional background music, like and comment, and organise reading lists. Writers get a built-in studio for drafting and publishing their own books.
 
-There is **no backend**. Data is seeded from `src/data/seed.js` and persisted in the browser's `localStorage`.
+The catalogue is seeded from `src/data/seed.js` and most library state is persisted in browser `localStorage`. API accounts are stored in SQLite during local development or Turso in production.
 
 ---
 
@@ -125,18 +125,51 @@ Routes a role can't access redirect to `#/`. Popups (book detail, profile, etc.)
 
 ## Running locally
 
-```bash
+Start the API in a first PowerShell terminal:
+
+```powershell
+Set-Location chudwell-api
+npm install
+$env:JWT_SECRET = "local-development-secret-change-me"
+npm run dev
+```
+
+Start the frontend in a second PowerShell terminal:
+
+```powershell
+Set-Location chudwell-client
 npm install
 npm run dev
 ```
 
-Open the URL Vite prints; because `base` is set, it looks like `http://localhost:5173/chudwell/`.
+Open the URL Vite prints. The API uses `http://localhost:3000` by default. Local SQLite data is stored in `chudwell-api/chudwell.db`.
+
+---
+
+## Persistent API database (Turso)
+
+Vercel functions do not provide a persistent local filesystem for application data. A SQLite file in the project or function environment is not a production database. The API uses a hosted Turso/libSQL database in production and refuses to start if its Turso URL or token is missing.
+
+1. Create a Turso database and generate a database auth token. Keep the token private.
+2. In Vercel, import this GitHub repository as a new project and set **Root Directory** to `chudwell-api`. Vercel detects the Express app from `server.js`; use the detected Express framework and default build settings. Do not add a separate start command: Vercel runs the Express app as a function.
+3. In the Vercel project's **Settings → Environment Variables**, add:
+   - `JWT_SECRET`: a long, random secret used to sign login tokens.
+   - `CLIENT_ORIGIN`: `https://ivengie.github.io` (the site origin, without `/chudwell/`).
+   - `TURSO_DATABASE_URL`: the database URL from Turso.
+   - `TURSO_AUTH_TOKEN`: the database auth token from Turso.
+4. Deploy the project. Its deployment URL is the public API URL; opening the base URL returns JSON status, and `/api/health` checks the database connection.
+
+Keep all secret values in Vercel's environment settings, not in GitHub or the frontend. The actual `.env` file is ignored by Git; `.env.example` contains placeholders only. Locally, the API defaults to `file:./chudwell.db` when `TURSO_DATABASE_URL` is unset.
+
+The API creates missing tables and applies versioned schema migrations at startup without dropping tables or seeding production data. The role migration adds `users.Role` with `ALTER TABLE`; future schema changes must also be additive, not database resets. To grant writer permissions to an account, run `UPDATE users SET Role = 'writer' WHERE Username = 'author';` in Turso's SQL console. New accounts default to reader. Switching from an existing local SQLite file to a new Turso database does not copy existing local accounts; migrate data separately if it needs to be retained.
+
+The API's `POST /api/books` and `PUT /api/books/:id` routes require a valid writer account. No token returns `401`; an authenticated reader gets `403`. For updates, the API also checks that the writer owns the book.
 
 ---
 
 ## Deploying to GitHub Pages
 
-1. **Set `base`** in `vite.config.js` to your repo name, with a slash on both sides:
+1. **Verify `base`** in `vite.config.js` matches your repo name, with a slash on both sides:
    ```js
    base: '/chudwell/',   // repo "chudwell" -> https://<user>.github.io/chudwell/
    ```
@@ -150,15 +183,17 @@ Open the URL Vite prints; because `base` is set, it looks like `http://localhost
    git remote add origin https://github.com/<your-username>/chudwell.git
    git push -u origin main
    ```
-3. **Deploy the built site:**
-   ```bash
+3. **Build and deploy the frontend** in PowerShell, replacing the placeholder with your Vercel API URL:
+   ```powershell
+   Set-Location chudwell-client
+   $env:VITE_API_URL = "https://<your-vercel-project>.vercel.app"
    npm run deploy
    ```
-   `predeploy` builds into `dist/`, then `gh-pages` pushes it to a `gh-pages` branch.
+   `predeploy` builds into `dist/`, then `gh-pages` pushes it to a `gh-pages` branch. The API URL is public, not a secret.
 4. On GitHub, go to **Settings → Pages** and set the source to the **`gh-pages`** branch (root).
-5. After a minute or two, visit `https://<your-username>.github.io/chudwell/`.
+5. After a minute or two, visit `https://ivengie.github.io/chudwell/`.
 
-To update the live site later, run both `git push` (source code) and `npm run deploy` (live site).
+To update the live site later, push the source and rerun `npm run deploy` from `chudwell-client`, with `VITE_API_URL` set to the Vercel API URL.
 
 ### Why refresh works
 
@@ -201,8 +236,8 @@ The seed catalogue (five books and their chapters) lives in `src/data/seed.js`. 
 
 ## Known limitations
 
-- No real backend or authentication; accounts are hard-coded demo accounts (see `src/config.js`)
-- Data is local to each browser and is not shared between users or devices
+- Login accounts are authenticated by the Express API. Writer permissions are granted to accounts in the API database.
+- Most library data is local to each browser and is not shared between users or devices.
 - Uploaded covers and avatars are stored in `localStorage`, which has a size limit (roughly 5 MB), so very large images may fail to save
 - Fixes and improvements welcome
 

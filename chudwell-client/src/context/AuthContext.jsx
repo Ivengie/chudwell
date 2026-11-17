@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { DEFAULT_AVATAR, PERMISSIONS, ROLE_ACCOUNTS, STORAGE } from "../config.js";
+import { API_BASE_URL } from "../api.js";
 import { load, save } from "../utils.js";
 
 const GUEST = { isLoggedIn: false, role: "guest", username: "@guest", displayName: "Guest", userAvatar: DEFAULT_AVATAR };
@@ -21,7 +22,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (identifier, password) => {
   try {
-    const res = await fetch("http://localhost:3000/api/auth/login", {
+    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),
@@ -37,7 +38,7 @@ export function AuthProvider({ children }) {
     setUser((u) => ({
       ...u,
       isLoggedIn: true,
-      role: account?.role ?? "reader",
+      role: data.user.role ?? account?.role ?? "reader",
       username: "@" + data.user.username,
       displayName: account?.displayName ?? data.user.name,
     }));
